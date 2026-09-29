@@ -58,18 +58,15 @@ struct ContentView: View {
             ScanStatusBar(model: model)
         }
         .frame(minWidth: 760, minHeight: 500)
-        .inspector(isPresented: $showCleanup) {
-            CleanupPanel(model: model)
-                .inspectorColumnWidth(min: 280, ideal: 340, max: 520)
-        }
+        .cleanupPresentation(showing: $showCleanup, model: model)
         .toolbar { toolbar }
         .task {
             model.agentEnv = await AgentLocator.find()
             model.openPanelAfterLaunchScan()
         }
         // An agent run or the setup offer always shows in the panel.
-        .onChange(of: model.agentRun == nil) { if model.agentRun != nil { showCleanup = true } }
-        .onChange(of: model.panelRequests) { showCleanup = true }
+        .onChange(of: model.agentRun == nil) { _ in if model.agentRun != nil { showCleanup = true } }
+        .onChange(of: model.panelRequests) { _ in showCleanup = true }
         .hidingWindowTitle()
         .onAppear {
             // Never start a whole-disk scan without FDA: every protected
@@ -244,6 +241,23 @@ struct ContentView: View {
     }
 
     private func openFDASettings() { openFullDiskAccessSettings() }
+}
+
+private extension View {
+    @ViewBuilder
+    func cleanupPresentation(showing showCleanup: Binding<Bool>, model: ScanModel) -> some View {
+        if #available(macOS 14, *) {
+            inspector(isPresented: showCleanup) {
+                CleanupPanel(model: model)
+                    .inspectorColumnWidth(min: 280, ideal: 340, max: 520)
+            }
+        } else {
+            sheet(isPresented: showCleanup) {
+                CleanupPanel(model: model)
+                    .frame(minWidth: 280, idealWidth: 340, maxWidth: 520)
+            }
+        }
+    }
 }
 
 /// Observe 60 Hz counters here so progress updates do not rebuild the toolbar.
