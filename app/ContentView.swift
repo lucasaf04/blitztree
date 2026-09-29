@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 import AppKit
 
 struct ContentView: View {
-    @State private var model = ScanModel()
+    @StateObject private var model = ScanModel()
     @State private var showTable = true
     @AppStorage("bz.showCleanup") private var showCleanup = false
     @AppStorage("bz.listWidth") private var listWidth = 390.0
@@ -248,7 +248,7 @@ struct ContentView: View {
 
 /// Observe 60 Hz counters here so progress updates do not rebuild the toolbar.
 private struct ScanProgress: View {
-    let model: ScanModel
+    @ObservedObject var model: ScanModel
     var body: some View {
         VStack(spacing: 14) {
             Text(Fmt.size(model.bytes))
@@ -270,7 +270,7 @@ private struct ScanProgress: View {
 
 /// Pointer movement changes only the status text, not the window's view graph.
 private struct ScanStatusBar: View {
-    let model: ScanModel
+    @ObservedObject var model: ScanModel
     var body: some View {
         HStack(spacing: 8) {
             if let tree = model.tree {
@@ -412,7 +412,7 @@ final class ValueCell: NSTableCellView {
 }
 
 struct OutlinePanel: NSViewRepresentable {
-    let model: ScanModel
+    @ObservedObject var model: ScanModel
 
     /// An NSObject so the outline hashes and compares items by pointer: as a
     /// plain Swift class every lookup went through the Swift runtime's

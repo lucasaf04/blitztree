@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import Observation
+import Combine
 
 /// A folder that is safe to delete because a tool rebuilds or re-downloads
 /// it on demand: package installs, build output, caches.
@@ -31,12 +31,11 @@ nonisolated enum Cleanup {
 
 /// A manual cleanup batch keeps file coordination off the main actor and
 /// prevents repeated clicks from moving the same captured selection twice.
-@Observable
 @MainActor
-final class CleanupTrashBatch {
-    private(set) var running = false
+final class CleanupTrashBatch: ObservableObject {
+    @Published private(set) var running = false
     /// Keep errors when the inspector closes during a background batch.
-    private(set) var failures: [String] = []
+    @Published private(set) var failures: [String] = []
 
     func clearFailures() { failures = [] }
 
@@ -66,7 +65,7 @@ final class CleanupTrashBatch {
 /// Right-hand inspector: what can be reclaimed, pick, trash, rescan. While an
 /// agent cleanup is on screen, the whole panel is that run.
 struct CleanupPanel: View {
-    let model: ScanModel
+    @ObservedObject var model: ScanModel
     @State private var picked: Set<Int> = []
     @State private var confirming = false
 
@@ -256,8 +255,8 @@ struct CleanupPanel: View {
 /// The agent's work, live: its steps while it looks, the plan as it is
 /// written, then BlitzTree's own cleanup and the space it gave back.
 private struct AgentRunView: View {
-    let run: AgentRun
-    let model: ScanModel
+    @ObservedObject var run: AgentRun
+    @ObservedObject var model: ScanModel
     let retry: () -> Void
     let close: () -> Void
 
@@ -523,7 +522,7 @@ private struct Clock: View {
 }
 
 private struct PlanCard: View {
-    @Bindable var item: PlanItem
+    @ObservedObject var item: PlanItem
     let editable: Bool
     let current: Bool
     let reveal: () -> Void
@@ -673,7 +672,7 @@ private struct Shimmer: ViewModifier {
 
 /// Installing or signing in, in a line the user can glance at.
 private struct SetupProgress: View {
-    let setup: AgentSetup
+    @ObservedObject var setup: AgentSetup
     let cancel: () -> Void
     let retry: () -> Void
 
