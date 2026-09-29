@@ -1,6 +1,6 @@
 import AppKit
+import Combine
 import Foundation
-import Observation
 import SwiftUI
 
 // "Clean up with Claude Code / Codex": the agent runs headless in the
@@ -148,13 +148,12 @@ nonisolated final class OutputText: @unchecked Sendable {
 
 /// Installs an agent into ~/.local/bin and signs it in through the browser,
 /// all in the background; the panel shows where it is.
-@Observable
 @MainActor
-final class AgentSetup {
+final class AgentSetup: ObservableObject {
     enum Step: Equatable { case installing, signingIn, failed(String) }
 
     let kind: AgentKind
-    private(set) var step: Step
+    @Published private(set) var step: Step
     private var process: Process?
     private var cancelled = false
 
@@ -484,9 +483,8 @@ nonisolated enum CleanupGuard {
 
 // MARK: - Run model
 
-@Observable
 @MainActor
-final class PlanItem: Identifiable {
+final class PlanItem: ObservableObject, Identifiable {
     /// `inTrash`: step one done, put back or deleted in step two.
     enum Status: Equatable { case waiting, running, inTrash, done, failed(String), skipped }
 
@@ -495,13 +493,13 @@ final class PlanItem: Identifiable {
     let paths: [String]
     /// Why BlitzTree won't do this one (protected folder, bad command…).
     let blocked: String?
-    var selected: Bool
-    var status: Status = .waiting
+    @Published var selected: Bool
+    @Published var status: Status = .waiting
     /// Space this item gave back to the disk (commands, emptied Trash).
-    var freed: UInt64 = 0
+    @Published var freed: UInt64 = 0
     /// Where its folders went in the Trash, for "Empty Trash".
-    var trashed: [URL] = []
-    var trashedBytes: UInt64 = 0
+    @Published var trashed: [URL] = []
+    @Published var trashedBytes: UInt64 = 0
 
     /// Size from the scan where it can be measured, else the agent's figure.
     let bytes: UInt64
@@ -586,28 +584,28 @@ final class PlanItem: Identifiable {
     var isCommand: Bool { spec.action == "command" && !viaTrash }
 }
 
-@Observable
 @MainActor
-final class AgentRun {
+final class AgentRun: ObservableObject {
     /// Two decisions from the user: `planned` → Move to Trash (can be undone)
     /// → `staged` → Delete for good → `done`.
     enum Phase: Equatable { case thinking, planned, trashing, staged, deleting, done, failed(String) }
 
     let agent: InstalledAgent
-    private(set) var phase: Phase = .thinking
+    @Published private(set) var phase: Phase = .thinking
     /// What the agent has done so far, in plain words; the last one is live.
-    private(set) var steps: [String] = ["Reading your scan"]
-    private(set) var summary = ""
-    private(set) var items: [PlanItem] = []
+    @Published private(set) var steps: [String] = ["Reading your scan"]
+    @Published private(set) var summary = ""
+    @Published private(set) var items: [PlanItem] = []
     private(set) var startedAt = Date()
-    private(set) var planSeconds: Double?
-    private(set) var current: UUID?
+    @Published private(set) var planSeconds: Double?
+    @Published private(set) var current: UUID?
 
     private var process: Process?
     private let scanRoot: String
     private let tree: Tree
     private let onFinish: () -> Void
     private var preparationTask: Task<Void, Never>?
+    private var itemSubscriptions: [UUID: AnyCancellable] = [:]
 
     init(agent: InstalledAgent, env: AgentEnvironment, tree: Tree, scanRoot: String,
          known: [CleanupItem], onFinish: @escaping () -> Void) {
@@ -654,7 +652,7 @@ final class AgentRun {
     var targets: [PlanItem] { items.filter { $0.selected && $0.blocked == nil } }
 
     /// Space the disk actually got back (statfs), set when deleting ends.
-    private(set) var reclaimed: UInt64?
+    @Published private(set) var reclaimed: UInt64?
 
     var selectedBytes: UInt64 { items.filter(\.selected).reduce(0) { $0 + $1.bytes } }
     var freed: UInt64 { items.reduce(0) { $0 + $1.freed } }
@@ -663,6 +661,17 @@ final class AgentRun {
     private func step(_ text: String) {
         guard steps.last != text else { return }
         withAnimation(.snappy) { steps.append(text) }
+    }
+
+    private func bindItem(_ item: PlanItem) {
+        itemSubscriptions[item.id] = item.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    private func bindItems() {
+        itemSubscriptions = [:]
+        for item in items { bindItem(item) }
     }
 
     /// `defaults write dev.ahmed.blitztree bz.claudeModel haiku` to try another.
@@ -768,8 +777,11 @@ final class AgentRun {
         case .activity(let text):
             step(text)
         case .item(let spec):
-            withAnimation(.snappy) { items.append(PlanItem(spec: spec, tree: tree)) }
+            let item = PlanItem(spec: spec, tree: tree)
+            bindItem(item)
+            withAnimation(.snappy) { items.append(item) }
         case .restart:
+            itemSubscriptions = [:]
             withAnimation(.snappy) { items = [] }
         case .plan(let summary, let specs):
             self.summary = summary
@@ -777,6 +789,7 @@ final class AgentRun {
             // (and their checkboxes) when they match.
             if specs.map(\.title) != items.map(\.spec.title) {
                 withAnimation(.snappy) { items = specs.map { PlanItem(spec: $0, tree: tree) } }
+                bindItems()
             }
             finishPlanning()
         case .failed(let message):

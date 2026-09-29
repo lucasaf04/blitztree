@@ -646,7 +646,7 @@ private extension NSFont {
 }
 
 struct SunburstView: NSViewRepresentable {
-    let model: ScanModel
+    @ObservedObject var model: ScanModel
 
     func makeNSView(context: Context) -> SunburstNSView {
         let v = SunburstNSView()

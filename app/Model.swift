@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 import Foundation
-import Observation
+import Combine
 
 /// Zero-copy view over the Rust engine's flat tree arrays.
 /// Read-only after init, so sharing it across threads is safe.
@@ -153,16 +153,15 @@ enum MapStyle: String {
     case treemap, rings
 }
 
-@Observable
 @MainActor
-final class ScanModel {
-    var files: UInt64 = 0
-    var dirs: UInt64 = 0
-    var bytes: UInt64 = 0
-    var scanning = false
-    var elapsed: Double = 0
-    var tree: Tree?
-    var scanRoot: String = {
+final class ScanModel: ObservableObject {
+    @Published var files: UInt64 = 0
+    @Published var dirs: UInt64 = 0
+    @Published var bytes: UInt64 = 0
+    @Published var scanning = false
+    @Published var elapsed: Double = 0
+    @Published var tree: Tree?
+    @Published var scanRoot: String = {
         // `BlitzTree /some/path` scans that path on launch (also handy for QA).
         if CommandLine.arguments.count > 1 {
             var isDir: ObjCBool = false
@@ -175,11 +174,15 @@ final class ScanModel {
         return "/System/Volumes/Data"
     }()
     /// Coding agents found on this Mac (Claude Code, Codex) and the user's PATH.
-    var agentEnv = AgentEnvironment()
+    @Published var agentEnv = AgentEnvironment()
     /// The agent cleanup on screen, if any.
-    var agentRun: AgentRun?
+    @Published var agentRun: AgentRun? {
+        didSet { bindAgentRun() }
+    }
     /// An agent being installed or signed in from the panel.
-    var agentSetup: AgentSetup?
+    @Published var agentSetup: AgentSetup? {
+        didSet { bindAgentSetup() }
+    }
     /// The first scan after launch opens the Clean Up panel once.
     private var panelOpenedAfterLaunch = false
 
@@ -213,7 +216,7 @@ final class ScanModel {
     }
 
     /// Bumped to ask the window to open the Clean Up panel.
-    var panelRequests = 0
+    @Published var panelRequests = 0
 
     func setUp(_ kind: AgentKind) {
         agentSetup?.cancel()
@@ -226,14 +229,14 @@ final class ScanModel {
         }
     }
     /// A tree has been shown at least once, so the views exist (see ContentView).
-    var hasShownTree = false
-    var viewRoot: Int = 0 {
+    @Published var hasShownTree = false
+    @Published var viewRoot: Int = 0 {
         didSet {
             // A selection outside the folder on screen would read as over 100%.
             if let sel = selection, let tree, !tree.ancestry(sel).contains(viewRoot) { selection = nil }
         }
     }
-    var selection: Int? = nil
+    @Published var selection: Int? = nil
 
     /// Select a node from a list, zooming out first if it is outside the
     /// folder on screen (it would have nothing to outline).
@@ -241,25 +244,47 @@ final class ScanModel {
         if let tree, !tree.ancestry(node).contains(viewRoot) { viewRoot = 0 }
         selection = node
     }
-    var hovered: Int? = nil
-    var freeBytes: UInt64 = 0
+    @Published var hovered: Int? = nil
+    @Published var freeBytes: UInt64 = 0
     /// Rebuildable folders worth deleting, largest first.
-    var cleanup: [CleanupItem] = []
+    @Published var cleanup: [CleanupItem] = []
     let cleanupTrash = CleanupTrashBatch()
     /// Volume-used minus what the scan could see: root-only territory.
-    var unscannedBytes: UInt64 = 0
-    var showFreeSpace: Bool = UserDefaults.standard.bool(forKey: "bz.showFree") {
+    @Published var unscannedBytes: UInt64 = 0
+    @Published var showFreeSpace: Bool = UserDefaults.standard.bool(forKey: "bz.showFree") {
         didSet { UserDefaults.standard.set(showFreeSpace, forKey: "bz.showFree") }
     }
-    var mapStyle: MapStyle = MapStyle(rawValue: UserDefaults.standard.string(forKey: "bz.mapStyle") ?? "") ?? .treemap {
+    @Published var mapStyle: MapStyle = MapStyle(rawValue: UserDefaults.standard.string(forKey: "bz.mapStyle") ?? "") ?? .treemap {
         didSet { UserDefaults.standard.set(mapStyle.rawValue, forKey: "bz.mapStyle") }
     }
+
+    private var cleanupTrashSubscription: AnyCancellable?
+    private var agentRunSubscription: AnyCancellable?
+    private var agentSetupSubscription: AnyCancellable?
 
     private var handle: OpaquePointer?
     private var timer: Timer?
     private var startedAt: Date?
     private var activity: NSObjectProtocol?
     private var volumeTask: Task<VolumeSpace, Never>?
+
+    init() {
+        cleanupTrashSubscription = cleanupTrash.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    private func bindAgentRun() {
+        agentRunSubscription = agentRun?.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    private func bindAgentSetup() {
+        agentSetupSubscription = agentSetup?.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
 
     func startScan(path: String? = nil) {
         if scanning || cleanupTrash.running { return }

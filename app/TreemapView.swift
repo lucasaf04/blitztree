@@ -563,7 +563,7 @@ final class NodeMenu: NSObject {
 }
 
 struct TreemapView: NSViewRepresentable {
-    let model: ScanModel
+    @ObservedObject var model: ScanModel
 
     func makeNSView(context: Context) -> TreemapNSView {
         let v = TreemapNSView()
