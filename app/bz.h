@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <copyfile.h>
+#include <removefile.h>
 
 typedef struct BzScan BzScan;
 
