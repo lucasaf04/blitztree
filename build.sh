@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 VERSION=$(awk -F'"' '/^version/{print $2; exit}' Cargo.toml)
 # Last three macOS releases. Newer-only UI (Liquid Glass) is gated with
 # #available, so the compiler enforces that nothing newer slips in unguarded.
-MIN_MACOS=14.0
+MIN_MACOS=13.0
 export MACOSX_DEPLOYMENT_TARGET=$MIN_MACOS
 
 echo "==> Rust engine"

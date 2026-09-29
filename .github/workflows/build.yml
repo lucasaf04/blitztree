@@ -13,3 +13,8 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build
       run: ./build.sh
+    - name: Upload app artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: BlitzTree.app
+        path: build/BlitzTree.app
