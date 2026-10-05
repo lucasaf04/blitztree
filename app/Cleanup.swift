@@ -312,7 +312,7 @@ private struct AgentRunView: View {
                 .padding(14)
         }
         // QA and demos only: BZ_AUTOFREE=<seconds> approves the plan after a pause.
-        .onChange(of: run.phase) {
+        .onChange(of: run.phase) { _ in
             guard run.phase == .planned || run.phase == .staged,
                   let delay = ProcessInfo.processInfo.environment["BZ_AUTOFREE"].flatMap(Double.init) else { return }
             Task {
@@ -326,9 +326,14 @@ private struct AgentRunView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(.tint)
-                .symbolEffect(.variableColor.iterative, options: .repeating, isActive: busy)
+            if #available(macOS 14, *) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.tint)
+                    .symbolEffect(.variableColor.iterative, options: .repeating, isActive: busy)
+            } else {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.tint)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.headline)
@@ -637,12 +642,18 @@ private struct PlanCard: View {
 /// A card-shaped placeholder that breathes while the plan is written.
 private struct SkeletonCard: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(Color.white.opacity(0.05))
-            .frame(height: 64)
-            .phaseAnimator([0.4, 1.0]) { view, phase in
-                view.opacity(phase)
-            } animation: { _ in .easeInOut(duration: 0.9) }
+        if #available(macOS 14, *) {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+                .frame(height: 64)
+                .phaseAnimator([0.4, 1.0]) { view, phase in
+                    view.opacity(phase)
+                } animation: { _ in .easeInOut(duration: 0.9) }
+        } else {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.05))
+                .frame(height: 64)
+        }
     }
 }
 
